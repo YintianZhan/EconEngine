@@ -7,12 +7,15 @@ class Agent:
         self.age = age
         self.hp = 100 - max((20 - self.age), 0) * 5 - max((self.age - 50), 0) * 5
         self.location = location
+        self.product = None
     
     def describe(self):
         print('The agent {} is {} years old, with {:.2f} hp, and is at {}'.format(self.name, self.age, self.hp, self.location))
 
+    def produce(self, resouce):
+        return
 
 
-
-a = Agent()
-a.describe()
+if __name__ == "__main__":
+    a = Agent()
+    a.describe()
