@@ -1,13 +1,14 @@
 import numpy as np
 
 class Recipe:
-    def __init__(self, time, inputs, input_units, output, output_units) -> None:
+    def __init__(self, time, inputs, input_units, output, output_units, requires_location = False) -> None:
         assert len(inputs) == len(input_units)
         self.time = time
         self.inputs = inputs
         self.input_units = input_units
         self.output = output
         self.output_units = output_units
+        self.requires_location = requires_location
 
     def describe(self):
         print('time:')
