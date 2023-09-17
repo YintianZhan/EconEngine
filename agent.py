@@ -19,14 +19,14 @@ class Agent:
         self.hp = 100 - max((20 - self.age), 0) * 5 - max((self.age - 50), 0) * 5
         self.location = location
         self.efficiency = efficiency
-        self.product = {}
+        self.product = {resource_name:0 for resource_name in resource_dict.keys()}
         self.utilities = 0
 
         self.n_games = 0
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(6, 256, 3)
+        self.model = Linear_QNet(6, 256, 5)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
     def describe(self, map = None):
@@ -87,6 +87,7 @@ class Agent:
             self.utilities += resource_dict[resource].consumption_utility
             self.hp += resource_dict[resource].health_points
             self.product[resource] -= 1
+            print('{} ate {}'.format(self.name, resource))
         else:
             print('{} could not eat {}'.format(self.name, resource))
 
@@ -96,8 +97,16 @@ class Agent:
                 self.product[resource] *= units.decay
 
     def act(self, model_action):
-        
-        pass
+        if model_action[0] == 1:
+            self.move_location((0,1))
+        elif model_action[1] == 1:
+            self.move_location((1,0))
+        elif model_action[2] == 1:
+            self.produce_local()
+        elif model_action[3] == 1:
+            self.cook()
+        elif model_action[4] == 1:
+            self.consume()
 
     def move_location(self, step, map):
         assert abs(sum(step)) == 1
@@ -175,6 +184,6 @@ if __name__ == "__main__":
     a.produce_resource('cooked fish')
     a.produce_resource('fish', map)
     a.trade(['apple'], [5], ['cooked fish','fish'], [1,1])
-    a.consume('fish')
+    a.consume('apple')
     a.move_location(step = [1,0], map = map)
     a.describe(map = map)
