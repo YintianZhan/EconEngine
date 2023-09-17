@@ -30,7 +30,7 @@ class Agent:
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(7, 256, 7)
+        self.model = Linear_QNet(7, 256, 9)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
     def describe(self, map = None):
@@ -52,14 +52,18 @@ class Agent:
         elif model_action[1] == 1:
             reward = self.move_location((1,0), self.map)
         elif model_action[2] == 1:
-            reward = self.produce_local(self.map)
+            reward = self.move_location((0,-1), self.map)
         elif model_action[3] == 1:
-            reward = self.cook()
+            reward = self.move_location((-1,0), self.map)
         elif model_action[4] == 1:
-            reward = self.consume('apple')
+            reward = self.produce_local(self.map)
         elif model_action[5] == 1:
-            reward = self.consume('fish')
+            reward = self.cook()
         elif model_action[6] == 1:
+            reward = self.consume('apple')
+        elif model_action[7] == 1:
+            reward = self.consume('fish')
+        elif model_action[8] == 1:
             reward = self.consume('cooked fish')
         self.hrs_spent += 1
         game_over = (self.hp == 0) or (self.hrs_spent == TOTAL_HRS)
@@ -145,6 +149,53 @@ class Agent:
             print('{} could not move {} from {}'.format(self.name, step, self.location))
         return 0
 
+    def get_available_actions(self):
+        action_availability = []
+        # move actions
+        if self.location[1] == self.map.width - 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.location[0] == self.map.length - 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.location[1] == 0:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.location[0] == 0:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+
+        # produce actions
+        if self.map.map[self.location[0]][self.location[1]] not in resource_dict.keys():
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.product['fish'] < 2 or self.product['wood'] < 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)  
+        
+        #consume
+        if self.product['apple'] < 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.product['fish'] < 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)
+        if self.product['cooked fish'] < 1:
+            action_availability.append(0)
+        else:
+            action_availability.append(1)     
+
+        return action_availability  
+    
+
     def get_state(self):
 
         state = [
@@ -183,14 +234,20 @@ class Agent:
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
+        available_actions = np.array(self.get_available_actions())
         self.epsilon = 1000 - self.n_games
-        final_move = [0,0,0,0,0,0,0]
+        final_move = [0,0,0,0,0,0,0,0,0]
         if random.randint(0, 200) < self.epsilon:
-            move = random.randint(0, 4)
+            r = np.random.uniform(size=9)
+            # move = random.randint(0, 8)
+            available_r = np.array([r[i] * available_actions[i] for i in range(len(r))])
+            move = np.argmax(available_r)
             final_move[move] = 1
         else:
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
+            prediction = prediction * available_actions
+            # available_prediction = [prediction[i] * available_actions[i] for i in range(len(prediction))]
             move = torch.argmax(prediction).item()
             final_move[move] = 1
 
@@ -245,9 +302,12 @@ def train():
 if __name__ == "__main__":
     # map = Map(2,2)
     # map.populate_resources(['fish','apple','water','wood'],[(0,0),(0,1),(1,0),(1,1)])
-    # a = Agent()
+    # a = Agent(map = map)
     # a.describe(map = map)
+    # print(a.get_available_actions())
     # a.move_location(step = [0,1], map = map)
+    # print(a.get_available_actions())
+    # a.describe(map = map)
     # a.produce_resource('apple', map)
     # a.move_location(step = [1,0], map = map)
     # a.produce_resource('wood', map)
