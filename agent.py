@@ -7,6 +7,7 @@ from model import Linear_QNet, QTrainer
 from collections import deque
 import random
 import torch
+from helper import plot
 
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
@@ -14,9 +15,10 @@ LR = 0.001
 TOTAL_HRS = 24
 
 class Agent:
-    def __init__(self, name = 'Alex', age = 20, location = (0,0), efficiency = 1) -> None:
+    def __init__(self, name = 'Alex', age = 20, location = (0,0), efficiency = 1, map = None) -> None:
         self.name = name
         self.age = age
+        self.map = map
         self.hp = 100 - max((20 - self.age), 0) * 5 - max((self.age - 50), 0) * 5
         self.location = location
         self.efficiency = efficiency
@@ -28,7 +30,7 @@ class Agent:
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(6, 256, 5)
+        self.model = Linear_QNet(7, 256, 7)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
     def describe(self, map = None):
@@ -46,15 +48,19 @@ class Agent:
     
     def act(self, model_action):
         if model_action[0] == 1:
-            reward = self.move_location((0,1))
+            reward = self.move_location((0,1), self.map)
         elif model_action[1] == 1:
-            reward = self.move_location((1,0))
+            reward = self.move_location((1,0), self.map)
         elif model_action[2] == 1:
-            reward = self.produce_local()
+            reward = self.produce_local(self.map)
         elif model_action[3] == 1:
             reward = self.cook()
         elif model_action[4] == 1:
-            reward = self.consume()
+            reward = self.consume('apple')
+        elif model_action[5] == 1:
+            reward = self.consume('fish')
+        elif model_action[6] == 1:
+            reward = self.consume('cooked fish')
         self.hrs_spent += 1
         game_over = (self.hp == 0) or (self.hrs_spent == TOTAL_HRS)
 
@@ -68,15 +74,18 @@ class Agent:
         self.hrs_spent = 0
 
     def produce_resource(self, resource, map = None):
-        if not resource_dict[resource].recipe.requires_location or (map != None and resource == map.map[self.location[0]][self.location[1]]):
-            for i in range(len(resource_dict[resource].recipe.inputs)):
-                input_resource = resource_dict[resource].recipe.inputs[i]
-                input_resource_units = resource_dict[resource].recipe.input_units[i]
-                assert self.product[input_resource] >= input_resource_units
-                self.product[input_resource] -= input_resource_units
-            self.product[resource] = self.product.get(resource, 0) + self.efficiency * resource_dict[resource].recipe.output_units
-            print('{} spent {} hrs and produced {} {}'.format(self.name, resource_dict[resource].recipe.time, resource_dict[resource].recipe.output_units, resource))
-        else:
+        try:
+            if not resource_dict[resource].recipe.requires_location or (map != None and resource == map.map[self.location[0]][self.location[1]]):
+                for i in range(len(resource_dict[resource].recipe.inputs)):
+                    input_resource = resource_dict[resource].recipe.inputs[i]
+                    input_resource_units = resource_dict[resource].recipe.input_units[i]
+                    assert self.product[input_resource] >= input_resource_units
+                    self.product[input_resource] -= input_resource_units
+                self.product[resource] = self.product.get(resource, 0) + self.efficiency * resource_dict[resource].recipe.output_units
+                print('{} spent {} hrs and produced {} {}'.format(self.name, resource_dict[resource].recipe.time, resource_dict[resource].recipe.output_units, resource))
+            else:
+                print('{} could not produce {}'.format(self.name, resource))
+        except:
             print('{} could not produce {}'.format(self.name, resource))
 
         return 0
@@ -125,12 +134,15 @@ class Agent:
                 self.product[resource] *= units.decay
 
     def move_location(self, step, map):
-        assert abs(sum(step)) == 1
-        assert self.location[0] + step[0] >= 0 and self.location[0] + step[0] < map.width
-        assert self.location[1] + step[1] >= 0 and self.location[1] + step[1] < map.length
-        old_location = self.location
-        self.location = (self.location[0] + step[0], self.location[1] + step[1])
-        print('{} moved from {} to {}'.format(self.name, old_location, self.location))
+        try:
+            assert abs(sum(step)) == 1
+            assert self.location[0] + step[0] >= 0 and self.location[0] + step[0] < map.width
+            assert self.location[1] + step[1] >= 0 and self.location[1] + step[1] < map.length
+            old_location = self.location
+            self.location = (self.location[0] + step[0], self.location[1] + step[1])
+            print('{} moved from {} to {}'.format(self.name, old_location, self.location))
+        except:
+            print('{} could not move {} from {}'.format(self.name, step, self.location))
         return 0
 
     def get_state(self):
@@ -141,10 +153,10 @@ class Agent:
             self.location[1],
 
             # product
-            self.products['apple'],
-            self.products['fish'],
-            self.products['wood'],
-            self.products['cooked fish'],
+            self.product['apple'],
+            self.product['fish'],
+            self.product['wood'],
+            self.product['cooked fish'],
 
             # health
             self.hp
@@ -171,10 +183,10 @@ class Agent:
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        self.epsilon = 80 - self.n_games
-        final_move = [0,0,0]
+        self.epsilon = 1000 - self.n_games
+        final_move = [0,0,0,0,0,0,0]
         if random.randint(0, 200) < self.epsilon:
-            move = random.randint(0, 2)
+            move = random.randint(0, 4)
             final_move[move] = 1
         else:
             state0 = torch.tensor(state, dtype=torch.float)
@@ -184,23 +196,69 @@ class Agent:
 
         return final_move
 
-
-if __name__ == "__main__":
+def train():
+    plot_scores = []
+    plot_mean_scores = []
+    total_score = 0
+    record = 0
     map = Map(2,2)
     map.populate_resources(['fish','apple','water','wood'],[(0,0),(0,1),(1,0),(1,1)])
-    a = Agent()
-    a.describe(map = map)
-    a.move_location(step = [0,1], map = map)
-    a.produce_resource('apple', map)
-    a.move_location(step = [1,0], map = map)
-    a.produce_resource('wood', map)
-    a.move_location(step = [-1,0], map = map)
-    a.move_location(step = [0,-1], map = map)
-    a.produce_resource('fish', map)
-    a.produce_resource('fish', map)
-    a.produce_resource('cooked fish')
-    a.produce_resource('fish', map)
-    a.trade(['apple'], [5], ['cooked fish','fish'], [1,1])
-    a.consume('apple')
-    a.move_location(step = [1,0], map = map)
-    a.describe(map = map)
+    agent = Agent(map = map)
+
+    while agent.n_games <= 10000:
+        # get old state
+        state_old = agent.get_state()
+
+        # get move
+        final_move = agent.get_action(state_old)
+
+        # perform move and get new state
+        reward, done, score = agent.act(final_move)
+        state_new = agent.get_state()
+
+        # train short memory
+        agent.train_short_memory(state_old, final_move, reward, state_new, done)
+
+        # remember
+        agent.remember(state_old, final_move, reward, state_new, done)
+
+        if done:
+            print('###########one day done############')
+            # train long memory, plot result
+            agent.reset()
+            agent.n_games += 1
+            agent.train_long_memory()
+
+            if score > record:
+                record = score
+                agent.model.save()
+
+            print('Game', agent.n_games, 'Score', score, 'Record:', record)
+
+            plot_scores.append(score)
+            total_score += score
+            mean_score = total_score / agent.n_games
+            plot_mean_scores.append(mean_score)
+            plot(plot_scores, plot_mean_scores)
+
+
+if __name__ == "__main__":
+    # map = Map(2,2)
+    # map.populate_resources(['fish','apple','water','wood'],[(0,0),(0,1),(1,0),(1,1)])
+    # a = Agent()
+    # a.describe(map = map)
+    # a.move_location(step = [0,1], map = map)
+    # a.produce_resource('apple', map)
+    # a.move_location(step = [1,0], map = map)
+    # a.produce_resource('wood', map)
+    # a.move_location(step = [-1,0], map = map)
+    # a.move_location(step = [0,-1], map = map)
+    # a.produce_resource('fish', map)
+    # a.produce_resource('fish', map)
+    # a.produce_resource('cooked fish')
+    # a.produce_resource('fish', map)
+    # a.trade(['apple'], [5], ['cooked fish','fish'], [1,1])
+    # a.consume('apple')
+    # a.move_location(step = [1,0], map = map)
+    # a.describe(map = map)
+    train()
