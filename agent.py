@@ -26,12 +26,13 @@ class Agent:
         self.utilities = 0
         self.hrs_spent = 0
         self.last_movement = None
+        self.last_action = None
 
         self.n_games = 0
         self.epsilon = 0 # randomness
         self.gamma = 0.9 # discount rate
         self.memory = deque(maxlen=MAX_MEMORY) # popleft()
-        self.model = Linear_QNet(7, 256, 9)
+        self.model = Linear_QNet(10, 256, 9)
         self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
     def describe(self, map = None):
@@ -77,6 +78,8 @@ class Agent:
         self.product = {resource_name:0 for resource_name in resource_dict.keys()}
         self.utilities = 0
         self.hrs_spent = 0
+        self.last_movement = None
+        self.last_action = None
 
     def produce_resource(self, resource, map = None):
         try:
@@ -87,13 +90,14 @@ class Agent:
                     assert self.product[input_resource] >= input_resource_units
                     self.product[input_resource] -= input_resource_units
                 self.product[resource] = self.product.get(resource, 0) + self.efficiency * resource_dict[resource].recipe.output_units
+                self.last_action = 'produce'
                 print('{} spent {} hrs and produced {} {}'.format(self.name, resource_dict[resource].recipe.time, resource_dict[resource].recipe.output_units, resource))
             else:
                 print('{} could not produce {}'.format(self.name, resource))
         except:
             print('{} could not produce {}'.format(self.name, resource))
 
-        return 0
+        return -0.05
 
     def produce_local(self, map):
         return self.produce_resource(map.map[self.location[0]][self.location[1]], map)
@@ -119,6 +123,7 @@ class Agent:
             print('for: ')
             for i in range(len(inflows)):
                 print(inflows[i], inflow_units[i])
+            self.last_action = 'trade'
         except Exception as e:
             print('{} could not trade'.format(self.name))
         return 0
@@ -128,6 +133,7 @@ class Agent:
             self.utilities += resource_dict[resource].consumption_utility
             self.hp += resource_dict[resource].health_points
             self.product[resource] -= 1
+            self.last_action = 'eat'
             print('{} ate {}'.format(self.name, resource))
         else:
             print('{} could not eat {}'.format(self.name, resource))
@@ -146,52 +152,53 @@ class Agent:
             old_location = self.location
             self.location = (self.location[0] + step[0], self.location[1] + step[1])
             self.last_movement = step
+            self.last_action = 'move'
             print('{} moved from {} to {}'.format(self.name, old_location, self.location))
         except:
             print('{} could not move {} from {}'.format(self.name, step, self.location))
-        return 0
+        return -0.05
 
     def get_available_actions(self):
         action_availability = []
         # move actions
         if self.location[1] == self.map.width - 1 or self.last_movement == (0,-1):
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)
         if self.location[0] == self.map.length - 1 or self.last_movement == (-1,0):
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)
         if self.location[1] == 0 or self.last_movement == (0,1):
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)
         if self.location[0] == 0 or self.last_movement == (1,0):
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)
 
         # produce actions
         if self.map.map[self.location[0]][self.location[1]] not in resource_dict.keys():
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)
         if self.product['fish'] < 2 or self.product['wood'] < 1:
-            action_availability.append(0)
+            action_availability.append(-100)
         else:
             action_availability.append(1)  
         
         #consume
-        if self.product['apple'] < 1:
-            action_availability.append(0)
+        if self.product['apple'] < 1 or self.last_action == 'move':
+            action_availability.append(-100)
         else:
             action_availability.append(1)
-        if self.product['fish'] < 1:
-            action_availability.append(0)
+        if self.product['fish'] < 1 or self.last_action == 'move':
+            action_availability.append(-100)
         else:
             action_availability.append(1)
-        if self.product['cooked fish'] < 1:
-            action_availability.append(0)
+        if self.product['cooked fish'] < 1 or self.last_action == 'move':
+            action_availability.append(-100)
         else:
             action_availability.append(1)     
 
@@ -212,7 +219,12 @@ class Agent:
             self.product['cooked fish'],
 
             # health
-            self.hp
+            self.hp,
+
+            # last action
+            self.last_action == 'move',
+            self.last_action == 'eat',
+            self.last_action == 'produce'
             ]
 
         return np.array(state, dtype=int)
@@ -237,7 +249,7 @@ class Agent:
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
         available_actions = np.array(self.get_available_actions())
-        self.epsilon = 1000 - self.n_games
+        self.epsilon = 100 - self.n_games
         final_move = [0,0,0,0,0,0,0,0,0]
         if random.randint(0, 200) < self.epsilon:
             r = np.random.uniform(size=9)
@@ -248,9 +260,16 @@ class Agent:
         else:
             state0 = torch.tensor(state, dtype=torch.float)
             prediction = self.model(state0)
-            prediction = prediction * available_actions
+            # import pdb
+            # pdb.set_trace()
+            available_prediction = torch.add(prediction, torch.tensor(available_actions))
+            # print(prediction)
+            # print(available_prediction)
             # available_prediction = [prediction[i] * available_actions[i] for i in range(len(prediction))]
-            move = torch.argmax(prediction).item()
+            move = torch.argmax(available_prediction).item()
+            # print(move)
+            # import pdb
+            # pdb.set_trace()
             final_move[move] = 1
 
         return final_move
@@ -264,7 +283,7 @@ def train():
     map.populate_resources(['fish','apple','water','wood'],[(0,0),(0,1),(1,0),(1,1)])
     agent = Agent(map = map)
 
-    while agent.n_games <= 300:
+    while agent.n_games <= 400:
         # get old state
         state_old = agent.get_state()
 
@@ -308,11 +327,11 @@ if __name__ == "__main__":
     # a.describe(map = map)
     # print(a.get_available_actions())
     # a.move_location(step = (0, 1), map = map)
-    # print(a.last_movement)
     # print(a.get_available_actions())
     # a.describe(map = map)
     # a.produce_resource('apple', map)
     # a.move_location(step = (1,0), map = map)
+    # print(a.get_available_actions())
     # a.produce_resource('wood', map)
     # a.move_location(step = (-1,0), map = map)
     # a.move_location(step = (0,-1), map = map)
