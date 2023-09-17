@@ -25,6 +25,7 @@ class Agent:
         self.product = {resource_name:0 for resource_name in resource_dict.keys()}
         self.utilities = 0
         self.hrs_spent = 0
+        self.last_movement = None
 
         self.n_games = 0
         self.epsilon = 0 # randomness
@@ -144,6 +145,7 @@ class Agent:
             assert self.location[1] + step[1] >= 0 and self.location[1] + step[1] < map.length
             old_location = self.location
             self.location = (self.location[0] + step[0], self.location[1] + step[1])
+            self.last_movement = step
             print('{} moved from {} to {}'.format(self.name, old_location, self.location))
         except:
             print('{} could not move {} from {}'.format(self.name, step, self.location))
@@ -152,19 +154,19 @@ class Agent:
     def get_available_actions(self):
         action_availability = []
         # move actions
-        if self.location[1] == self.map.width - 1:
+        if self.location[1] == self.map.width - 1 or self.last_movement == (0,-1):
             action_availability.append(0)
         else:
             action_availability.append(1)
-        if self.location[0] == self.map.length - 1:
+        if self.location[0] == self.map.length - 1 or self.last_movement == (-1,0):
             action_availability.append(0)
         else:
             action_availability.append(1)
-        if self.location[1] == 0:
+        if self.location[1] == 0 or self.last_movement == (0,1):
             action_availability.append(0)
         else:
             action_availability.append(1)
-        if self.location[0] == 0:
+        if self.location[0] == 0 or self.last_movement == (1,0):
             action_availability.append(0)
         else:
             action_availability.append(1)
@@ -262,7 +264,7 @@ def train():
     map.populate_resources(['fish','apple','water','wood'],[(0,0),(0,1),(1,0),(1,1)])
     agent = Agent(map = map)
 
-    while agent.n_games <= 10000:
+    while agent.n_games <= 300:
         # get old state
         state_old = agent.get_state()
 
@@ -305,20 +307,21 @@ if __name__ == "__main__":
     # a = Agent(map = map)
     # a.describe(map = map)
     # print(a.get_available_actions())
-    # a.move_location(step = [0,1], map = map)
+    # a.move_location(step = (0, 1), map = map)
+    # print(a.last_movement)
     # print(a.get_available_actions())
     # a.describe(map = map)
     # a.produce_resource('apple', map)
-    # a.move_location(step = [1,0], map = map)
+    # a.move_location(step = (1,0), map = map)
     # a.produce_resource('wood', map)
-    # a.move_location(step = [-1,0], map = map)
-    # a.move_location(step = [0,-1], map = map)
+    # a.move_location(step = (-1,0), map = map)
+    # a.move_location(step = (0,-1), map = map)
     # a.produce_resource('fish', map)
     # a.produce_resource('fish', map)
     # a.produce_resource('cooked fish')
     # a.produce_resource('fish', map)
     # a.trade(['apple'], [5], ['cooked fish','fish'], [1,1])
     # a.consume('apple')
-    # a.move_location(step = [1,0], map = map)
+    # a.move_location(step = (1,0), map = map)
     # a.describe(map = map)
     train()
