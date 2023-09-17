@@ -3,6 +3,14 @@ import pandas as pd
 from resource import Resource
 from resource_dict import resource_dict
 from map import Map
+from model import Linear_QNet, QTrainer
+from collections import deque
+import random
+import torch
+
+MAX_MEMORY = 100_000
+BATCH_SIZE = 1000
+LR = 0.001
 
 class Agent:
     def __init__(self, name = 'Alex', age = 20, location = (0,0), efficiency = 1) -> None:
@@ -13,6 +21,13 @@ class Agent:
         self.efficiency = efficiency
         self.product = {}
         self.utilities = 0
+
+        self.n_games = 0
+        self.epsilon = 0 # randomness
+        self.gamma = 0.9 # discount rate
+        self.memory = deque(maxlen=MAX_MEMORY) # popleft()
+        self.model = Linear_QNet(6, 256, 3)
+        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)
 
     def describe(self, map = None):
         print('The agent {} is {} years old, with {:.2f} hp, and is at {}'.format(self.name, self.age, self.hp, self.location))
@@ -28,7 +43,7 @@ class Agent:
             map.print_map([self.location])
 
     def produce_resource(self, resource, map = None):
-        if resource_dict[resource].recipe.requires_location and map != None and resource == map.map[self.location[0]][self.location[1]]:
+        if not resource_dict[resource].recipe.requires_location or (map != None and resource == map.map[self.location[0]][self.location[1]]):
             for i in range(len(resource_dict[resource].recipe.inputs)):
                 input_resource = resource_dict[resource].recipe.inputs[i]
                 input_resource_units = resource_dict[resource].recipe.input_units[i]
@@ -38,6 +53,13 @@ class Agent:
             print('{} spent {} hrs and produced {} {}'.format(self.name, resource_dict[resource].recipe.time, resource_dict[resource].recipe.output_units, resource))
         else:
             print('{} could not produce {}'.format(self.name, resource))
+
+    def produce_local(self, map):
+        self.produce_resource(map.map[self.location[0]][self.location[1]], map)
+
+    def cook(self):
+        self.produce_resource('cooked fish')
+        
 
     def trade(self, inflows, inflow_units, outflows, outflow_units):
         try:
@@ -73,7 +95,8 @@ class Agent:
             for resource, units in self.product.items():
                 self.product[resource] *= units.decay
 
-    def act(self):
+    def act(self, model_action):
+        
         pass
 
     def move_location(self, step, map):
@@ -83,6 +106,58 @@ class Agent:
         old_location = self.location
         self.location = (self.location[0] + step[0], self.location[1] + step[1])
         print('{} moved from {} to {}'.format(self.name, old_location, self.location))
+
+    def get_state(self):
+
+        state = [
+            # location
+            self.location[0],
+            self.location[1],
+
+            # product
+            self.products['apple'],
+            self.products['fish'],
+            self.products['wood'],
+            self.products['cooked fish'],
+
+            # health
+            self.hp
+            ]
+
+        return np.array(state, dtype=int)
+
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
+
+    def train_long_memory(self):
+        if len(self.memory) > BATCH_SIZE:
+            mini_sample = random.sample(self.memory, BATCH_SIZE) # list of tuples
+        else:
+            mini_sample = self.memory
+
+        states, actions, rewards, next_states, dones = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
+        #for state, action, reward, nexrt_state, done in mini_sample:
+        #    self.trainer.train_step(state, action, reward, next_state, done)
+
+    def train_short_memory(self, state, action, reward, next_state, done):
+        self.trainer.train_step(state, action, reward, next_state, done)
+
+    def get_action(self, state):
+        # random moves: tradeoff exploration / exploitation
+        self.epsilon = 80 - self.n_games
+        final_move = [0,0,0]
+        if random.randint(0, 200) < self.epsilon:
+            move = random.randint(0, 2)
+            final_move[move] = 1
+        else:
+            state0 = torch.tensor(state, dtype=torch.float)
+            prediction = self.model(state0)
+            move = torch.argmax(prediction).item()
+            final_move[move] = 1
+
+        return final_move
+
 
 if __name__ == "__main__":
     map = Map(2,2)
