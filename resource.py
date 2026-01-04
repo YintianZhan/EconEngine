@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from resource_recipe import Recipe
 
 class Resource:

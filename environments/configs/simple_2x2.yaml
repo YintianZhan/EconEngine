@@ -1,0 +1,41 @@
+# Simple 2x2 Environment - Matches Current Hardcoded Setup
+#
+# This environment replicates the current hardcoded configuration
+# for backward compatibility testing.
+
+environment_name: "simple_2x2_baseline"
+
+# Grid configuration
+grid_size: [2, 2]  # 2x2 grid
+episode_length: 24  # 24 hours per episode
+
+# Resource locations (matching current setup)
+resources:
+  fish:
+    locations: [[0, 0]]
+    regeneration_rate: inf  # Unlimited (instant regeneration)
+
+  apple:
+    locations: [[0, 1]]
+    regeneration_rate: inf
+
+  water:
+    locations: [[1, 0]]
+    regeneration_rate: inf
+
+  wood:
+    locations: [[1, 1]]
+    regeneration_rate: inf
+
+# Agent configuration
+agent_start: [0, 0]  # Agent starts at (0, 0)
+
+# Training configuration
+max_games: 400  # Maximum number of training episodes
+
+# Validation info (not used in Phase 1, but documented for future)
+optimal_strategy: |
+  Current environment has no clear optimal strategy documented.
+  Agent should learn through exploration.
+
+optimal_utility: null  # Not yet determined

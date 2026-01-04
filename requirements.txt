@@ -1,0 +1,15 @@
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+torch>=2.0.0
+matplotlib>=3.7.0
+ipython>=8.0.0
+
+# New dependencies for Phase 1
+pyyaml>=6.0          # Config file parsing
+tqdm>=4.65.0         # Progress bars
+streamlit>=1.28.0    # Interactive dashboard
+plotly>=5.14.0       # Interactive visualizations
+
+# Future dependencies (commented out for now)
+# pytest>=7.3.0      # Testing framework
