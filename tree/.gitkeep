@@ -1,0 +1,2 @@
+# This file ensures the tree directory structure is tracked in git
+# even when subdirectories are empty
